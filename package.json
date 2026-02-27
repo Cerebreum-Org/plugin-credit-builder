@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-credit-builder",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ElizaOS plugin for autonomous credit building — personal credit (FCRA), business credit (ECOA), dispute automation, certified mail via Lob API, and ML-powered score optimization",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
