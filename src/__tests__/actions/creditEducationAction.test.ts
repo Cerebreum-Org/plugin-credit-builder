@@ -92,6 +92,6 @@ describe('creditEducationAction', () => {
 
   it('always returns success', async () => {
     const result = await creditEducationAction.handler(runtime, createMessage('credit question'), undefined, {}, callback);
-    expect(result.success).toBe(true);
+    expect(result!.success).toBe(true);
   });
 });

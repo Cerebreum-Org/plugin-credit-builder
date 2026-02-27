@@ -40,7 +40,7 @@ describe('checkDisputesAction', () => {
   describe('handler — no disputes', () => {
     it('suggests using ANALYZE_CREDIT when no disputes exist', async () => {
       const result = await checkDisputesAction.handler(runtime, createMessage('check disputes'), undefined, {}, callback);
-      expect(result.success).toBe(true);
+      expect(result!.success).toBe(true);
       expect(callbackTexts[0]).toContain('ANALYZE_CREDIT');
     });
   });
@@ -124,7 +124,7 @@ describe('checkDisputesAction', () => {
     it('returns failure when service is missing', async () => {
       (runtime.getService as any).mockImplementation(() => null);
       const result = await checkDisputesAction.handler(runtime, createMessage('disputes'), undefined, {}, callback);
-      expect(result.success).toBe(false);
+      expect(result!.success).toBe(false);
     });
   });
 });

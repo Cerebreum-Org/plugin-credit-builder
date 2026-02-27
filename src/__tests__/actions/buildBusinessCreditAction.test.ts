@@ -91,6 +91,6 @@ describe('buildBusinessCreditAction', () => {
 
   it('always returns success', async () => {
     const result = await buildBusinessCreditAction.handler(runtime, createMessage('business credit'), undefined, {}, callback);
-    expect(result.success).toBe(true);
+    expect(result!.success).toBe(true);
   });
 });

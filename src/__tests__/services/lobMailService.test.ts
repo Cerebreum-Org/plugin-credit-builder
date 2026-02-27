@@ -7,11 +7,11 @@ const TEST_API_KEY = 'test_abc123';
 const LIVE_API_KEY = 'live_xyz789';
 
 function mockFetchOk(body: unknown) {
-  return mock(() => Promise.resolve(new Response(JSON.stringify(body), { status: 200 })));
+  return mock(() => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))) as unknown as typeof fetch & { mock: { calls: unknown[][] }; mockClear: () => void };
 }
 
 function mockFetchError(status: number, body: string) {
-  return mock(() => Promise.resolve(new Response(body, { status })));
+  return mock(() => Promise.resolve(new Response(body, { status }))) as unknown as typeof fetch & { mock: { calls: unknown[][] }; mockClear: () => void };
 }
 
 describe('LobMailService', () => {
@@ -53,7 +53,7 @@ describe('LobMailService', () => {
       });
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const [url, opts] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
       expect(url).toContain('/v1/us_verifications');
       expect(opts.method).toBe('POST');
     });
@@ -64,7 +64,7 @@ describe('LobMailService', () => {
 
       await service.verifyAddress({ address_line1: '123 Main', city: 'City', state: 'CA', zip: '90210' });
 
-      const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const [, opts] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
       const authHeader = (opts.headers as Record<string, string>)['Authorization'];
       expect(authHeader).toStartWith('Basic ');
       expect(atob(authHeader.replace('Basic ', ''))).toBe(TEST_API_KEY + ':');
@@ -91,7 +91,7 @@ describe('LobMailService', () => {
 
       await service.sendCertifiedLetter(from, to, '<html>letter</html>', 'Test letter');
 
-      const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const [url, opts] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
       expect(url).toContain('/v1/letters');
       expect(opts.method).toBe('POST');
       const body = opts.body as string;
@@ -117,7 +117,7 @@ describe('LobMailService', () => {
 
       await service.checkStatus('ltr_123');
 
-      const [url, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const [url, opts] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
       expect(url).toContain('/v1/letters/ltr_123');
       expect(opts.method).toBeUndefined(); // GET is default
     });
@@ -200,7 +200,7 @@ describe('LobMailService', () => {
 
       await service.sendDispute(client, 'goodwill', creditorAddr, items);
 
-      const body = (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string;
+      const body = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string;
       expect(body).toContain('to%5Bname%5D=Midland+Credit');
       expect(body).toContain('San+Diego');
     });

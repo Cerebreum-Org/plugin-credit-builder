@@ -31,7 +31,7 @@ describe('sendDisputeAction', () => {
 
     globalThis.fetch = mock(() =>
       Promise.resolve(new Response(JSON.stringify(LOB_SEND_RESPONSE), { status: 200 }))
-    );
+    ) as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -58,7 +58,7 @@ describe('sendDisputeAction', () => {
   describe('handler — no profile', () => {
     it('asks user to run ANALYZE_CREDIT', async () => {
       const result = await sendDisputeAction.handler(runtime, createMessage('send dispute'), undefined, {}, callback);
-      expect(result.success).toBe(false);
+      expect(result!.success).toBe(false);
       expect(callbackTexts[0]).toContain('ANALYZE_CREDIT');
     });
   });
@@ -69,7 +69,7 @@ describe('sendDisputeAction', () => {
     it('refuses to send when profile has no negative items', async () => {
       await profileService.saveProfile(TEST_USER_ID, createProfile({ negative_items: [] }));
       const result = await sendDisputeAction.handler(runtime, createMessage('send basic dispute to equifax'), undefined, {}, callback);
-      expect(result.success).toBe(false);
+      expect(result!.success).toBe(false);
       expect(callbackTexts[0]).toContain('No negative items');
     });
   });
@@ -158,19 +158,19 @@ describe('sendDisputeAction', () => {
 
     it('sends to single bureau when name detected', async () => {
       const result = await sendDisputeAction.handler(runtime, createMessage('send 609 to experian'), undefined, {}, callback);
-      expect(result.success).toBe(true);
+      expect(result!.success).toBe(true);
       expect(callbackTexts.join(' ')).toContain('experian');
     });
 
     it('sends to all 3 when "all 3 bureaus" mentioned', async () => {
       const result = await sendDisputeAction.handler(runtime, createMessage('send basic dispute to all 3 bureaus'), undefined, {}, callback);
-      expect(result.success).toBe(true);
+      expect(result!.success).toBe(true);
       expect(callbackTexts.join(' ')).toContain('all 3 bureaus');
     });
 
     it('defaults to equifax when no bureau specified for bureau-type letter', async () => {
       const result = await sendDisputeAction.handler(runtime, createMessage('send 609 letter'), undefined, {}, callback);
-      expect(result.success).toBe(true);
+      expect(result!.success).toBe(true);
       expect(callbackTexts.join(' ')).toContain('equifax');
     });
   });
@@ -184,7 +184,7 @@ describe('sendDisputeAction', () => {
 
     it('prompts for creditor name when none detected', async () => {
       const result = await sendDisputeAction.handler(runtime, createMessage('send goodwill letter'), undefined, {}, callback);
-      expect(result.success).toBe(true);
+      expect(result!.success).toBe(true);
       expect(callbackTexts.join(' ')).toContain('Which one');
     });
 
@@ -213,7 +213,7 @@ describe('sendDisputeAction', () => {
       }));
 
       const result = await sendDisputeAction.handler(runtime, createMessage('send goodwill letter to Capital One'), undefined, {}, callback);
-      expect(result.success).toBe(true);
+      expect(result!.success).toBe(true);
       expect(callbackTexts.join(' ')).toContain('Dispute sent');
     });
   });
@@ -254,7 +254,7 @@ describe('sendDisputeAction', () => {
         createMessage('validate debt from Midland Credit Management'),
         undefined, {}, callback
       );
-      expect(result.success).toBe(true);
+      expect(result!.success).toBe(true);
       expect(callbackTexts.join(' ')).toContain('Dispute sent');
     });
 
@@ -283,7 +283,7 @@ describe('sendDisputeAction', () => {
         createMessage('intent to sue equifax'),
         undefined, {}, callback
       );
-      expect(result.success).toBe(true);
+      expect(result!.success).toBe(true);
       expect(callbackTexts.join(' ')).toContain('equifax');
       expect(callbackTexts.join(' ')).toContain('Intent to Sue');
     });
@@ -308,14 +308,14 @@ describe('sendDisputeAction', () => {
     it('catches Lob API errors and reports to user', async () => {
       globalThis.fetch = mock(() =>
         Promise.resolve(new Response('Payment required', { status: 402 }))
-      );
+      ) as unknown as typeof fetch;
 
       const result = await sendDisputeAction.handler(
         runtime,
         createMessage('send 609 to equifax'),
         undefined, {}, callback
       );
-      expect(result.success).toBe(false);
+      expect(result!.success).toBe(false);
       expect(callbackTexts.join(' ')).toContain('Failed to send dispute');
     });
   });

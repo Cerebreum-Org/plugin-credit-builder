@@ -40,7 +40,7 @@ describe('analyzeCreditAction', () => {
   describe('handler — no profile', () => {
     it('starts intake and asks for credit info', async () => {
       const result = await analyzeCreditAction.handler(runtime, createMessage('analyze my credit'), undefined, {}, callback);
-      expect(result.success).toBe(true);
+      expect(result!.success).toBe(true);
       expect(callbackTexts[0]).toContain('credit score');
       expect(callbackTexts[0]).toContain('credit accounts');
     });
@@ -61,8 +61,8 @@ describe('analyzeCreditAction', () => {
 
     it('returns success with audit data', async () => {
       const result = await analyzeCreditAction.handler(runtime, createMessage('analyze credit'), undefined, {}, callback);
-      expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect(result!.success).toBe(true);
+      expect(result!.data).toBeDefined();
     });
 
     it('includes score phase', async () => {
@@ -105,7 +105,7 @@ describe('analyzeCreditAction', () => {
     it('returns failure when service is missing', async () => {
       (runtime.getService as any).mockImplementation(() => null);
       const result = await analyzeCreditAction.handler(runtime, createMessage('analyze'), undefined, {}, callback);
-      expect(result.success).toBe(false);
+      expect(result!.success).toBe(false);
     });
   });
 });
