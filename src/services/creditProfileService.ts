@@ -1,38 +1,62 @@
 /**
  * Credit Profile Service — Manages client credit profiles and audit state
+ *
+ * Extends ElizaOS Service with persistence:
+ * - Profiles → runtime cache (key-value)
+ * - Disputes → runtime memory system (event-like records)
+ * - Audits → ephemeral (recomputed from profile data)
  */
 
-import { type IAgentRuntime, logger } from '@elizaos/core';
-import type { CreditProfile, CreditAudit, DisputeRecord, RecommendedAction, DisputeCandidate, NegativeItem } from '../types';
+import { Service, type IAgentRuntime, type Memory, type UUID, logger } from '@elizaos/core';
+import type { CreditProfile, CreditAudit, DisputeRecord, RecommendedAction, DisputeCandidate, NegativeItem, CreditorAddress } from '../types';
 
-export class CreditProfileService {
-  private profiles: Map<string, CreditProfile> = new Map();
-  private audits: Map<string, CreditAudit> = new Map();
-  private disputes: Map<string, DisputeRecord[]> = new Map();
+declare module '@elizaos/core' {
+  interface ServiceTypeRegistry {
+    CREDIT_PROFILE: 'credit_profile';
+  }
+}
+
+const CACHE_PREFIX = 'credit-builder:profile:';
+const CREDITOR_ADDR_PREFIX = 'credit-builder:creditor-addr:';
+const DISPUTES_TABLE = 'credit_disputes';
+
+export class CreditProfileService extends Service {
+  static serviceType = 'credit_profile' as const;
+  capabilityDescription = 'Manages credit profiles, audits, and dispute records with persistence';
+
+  static async start(runtime: IAgentRuntime): Promise<CreditProfileService> {
+    const service = new CreditProfileService(runtime);
+    logger.info('[CreditBuilder] CreditProfileService started');
+    return service;
+  }
+
+  async stop(): Promise<void> {
+    logger.info('[CreditBuilder] CreditProfileService stopped');
+  }
 
   // -- Profile Management ---------------------------------------------------
 
-  saveProfile(userId: string, profile: CreditProfile): void {
-    this.profiles.set(userId, profile);
+  async saveProfile(userId: string, profile: CreditProfile): Promise<void> {
+    await this.runtime.setCache(`${CACHE_PREFIX}${userId}`, profile);
     logger.info(`[CreditBuilder] Profile saved for ${userId}`);
   }
 
-  getProfile(userId: string): CreditProfile | undefined {
-    return this.profiles.get(userId);
+  async getProfile(userId: string): Promise<CreditProfile | undefined> {
+    return await this.runtime.getCache<CreditProfile>(`${CACHE_PREFIX}${userId}`);
   }
 
-  updateProfile(userId: string, updates: Partial<CreditProfile>): CreditProfile | undefined {
-    const existing = this.profiles.get(userId);
+  async updateProfile(userId: string, updates: Partial<CreditProfile>): Promise<CreditProfile | undefined> {
+    const existing = await this.getProfile(userId);
     if (!existing) return undefined;
     const updated = { ...existing, ...updates };
-    this.profiles.set(userId, updated);
+    await this.saveProfile(userId, updated);
     return updated;
   }
 
   // -- Credit Audit ---------------------------------------------------------
 
-  runAudit(userId: string): CreditAudit | undefined {
-    const profile = this.profiles.get(userId);
+  async runAudit(userId: string): Promise<CreditAudit | undefined> {
+    const profile = await this.getProfile(userId);
     if (!profile) return undefined;
 
     const score = profile.current_score || 0;
@@ -106,43 +130,96 @@ export class CreditProfileService {
       recommended_actions: actions,
     };
 
-    this.audits.set(userId, audit);
     return audit;
   }
 
-  getAudit(userId: string): CreditAudit | undefined {
-    return this.audits.get(userId);
+  // -- Dispute Tracking (persisted via memory system) -----------------------
+
+  async addDispute(userId: string, dispute: DisputeRecord): Promise<void> {
+    const memory: Memory = {
+      entityId: userId as UUID,
+      agentId: this.runtime.agentId,
+      roomId: userId as UUID,
+      content: {
+        text: `Dispute: ${dispute.letter_name} → ${dispute.target}`,
+        ...dispute,
+      },
+      metadata: {
+        type: 'custom',
+        source: 'credit-builder',
+        tags: ['dispute', dispute.letter_type, dispute.target],
+      },
+    };
+    await this.runtime.createMemory(memory, DISPUTES_TABLE);
+    logger.info(`[CreditBuilder] Dispute record saved for ${userId}: ${dispute.id}`);
   }
 
-  // -- Dispute Tracking -----------------------------------------------------
-
-  addDispute(userId: string, dispute: DisputeRecord): void {
-    const existing = this.disputes.get(userId) || [];
-    existing.push(dispute);
-    this.disputes.set(userId, existing);
+  async getDisputes(userId: string): Promise<DisputeRecord[]> {
+    const memories = await this.runtime.getMemories({
+      tableName: DISPUTES_TABLE,
+      roomId: userId as UUID,
+    });
+    return memories.map(m => this.memoryToDispute(m)).filter((d): d is DisputeRecord => d !== null);
   }
 
-  getDisputes(userId: string): DisputeRecord[] {
-    return this.disputes.get(userId) || [];
-  }
-
-  getPendingDisputes(userId: string): DisputeRecord[] {
+  async getPendingDisputes(userId: string): Promise<DisputeRecord[]> {
     const now = new Date();
-    return this.getDisputes(userId).filter(d =>
+    const all = await this.getDisputes(userId);
+    return all.filter(d =>
       ['sent', 'delivered'].includes(d.status) &&
       new Date(d.response_deadline) > now
     );
   }
 
-  getOverdueDisputes(userId: string): DisputeRecord[] {
+  async getOverdueDisputes(userId: string): Promise<DisputeRecord[]> {
     const now = new Date();
-    return this.getDisputes(userId).filter(d =>
+    const all = await this.getDisputes(userId);
+    return all.filter(d =>
       ['sent', 'delivered'].includes(d.status) &&
       new Date(d.response_deadline) <= now
     );
   }
 
+  // -- Creditor Address Management ------------------------------------------
+
+  normalizeCreditorName(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  async saveCreditorAddress(userId: string, address: CreditorAddress): Promise<void> {
+    const key = `${CREDITOR_ADDR_PREFIX}${userId}:${this.normalizeCreditorName(address.creditor_name)}`;
+    await this.runtime.setCache(key, address);
+    logger.info(`[CreditBuilder] Creditor address saved for ${userId}: ${address.creditor_name}`);
+  }
+
+  async getCreditorAddress(userId: string, creditorName: string): Promise<CreditorAddress | undefined> {
+    const key = `${CREDITOR_ADDR_PREFIX}${userId}:${this.normalizeCreditorName(creditorName)}`;
+    return await this.runtime.getCache<CreditorAddress>(key);
+  }
+
   // -- Internal Helpers -----------------------------------------------------
+
+  private memoryToDispute(memory: Memory): DisputeRecord | null {
+    const c = memory.content as Record<string, unknown>;
+    if (!c['letter_type'] || !c['target']) return null;
+    return {
+      id: (c['id'] as string) || (memory.id as string) || '',
+      letter_type: c['letter_type'] as string,
+      letter_name: c['letter_name'] as string,
+      target: c['target'] as string,
+      recipient_name: c['recipient_name'] as string,
+      items_disputed: (c['items_disputed'] as NegativeItem[]) || [],
+      sent_date: c['sent_date'] as string,
+      response_deadline: c['response_deadline'] as string,
+      escalation_date: c['escalation_date'] as string,
+      status: c['status'] as DisputeRecord['status'],
+      lob_letter_id: c['lob_letter_id'] as string | undefined,
+      tracking_number: c['tracking_number'] as string | undefined,
+      cost: c['cost'] as number | undefined,
+      outcome: c['outcome'] as DisputeRecord['outcome'],
+      notes: c['notes'] as string | undefined,
+    };
+  }
 
   private assessDisputeCandidate(item: NegativeItem): DisputeCandidate {
     let estimatedGain = 0;
@@ -194,7 +271,6 @@ export class CreditProfileService {
   ): RecommendedAction[] {
     const actions: RecommendedAction[] = [];
 
-    // Utilization fix (biggest quick win)
     if (utilStatus === 'critical' || utilStatus === 'fair') {
       actions.push({
         action: 'Reduce utilization',
@@ -207,7 +283,6 @@ export class CreditProfileService {
       });
     }
 
-    // Dispute negatives
     if ((profile.negative_items || []).length > 0) {
       actions.push({
         action: 'Dispute negative items',
@@ -220,7 +295,6 @@ export class CreditProfileService {
       });
     }
 
-    // Foundation phase
     if (phase === 'foundation') {
       if ((profile.total_accounts || 0) < 3) {
         actions.push({
@@ -253,7 +327,6 @@ export class CreditProfileService {
       }
     }
 
-    // Credit mix
     if (missingTypes.length > 0) {
       actions.push({
         action: 'Diversify credit mix',
@@ -266,7 +339,6 @@ export class CreditProfileService {
       });
     }
 
-    // Credit limit increases
     if (phase !== 'foundation') {
       actions.push({
         action: 'Request credit limit increases',
@@ -279,7 +351,6 @@ export class CreditProfileService {
       });
     }
 
-    // Experian Boost
     actions.push({
       action: 'Enable Experian Boost',
       description: 'Connect utility, phone, and streaming payments to Experian Boost for an instant score bump (Experian only).',

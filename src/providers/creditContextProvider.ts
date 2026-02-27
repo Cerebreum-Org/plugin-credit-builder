@@ -2,26 +2,30 @@
  * Credit Context Provider — Gives the agent awareness of the user's credit state
  */
 
-import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
-import { CreditProfileService } from '../services/creditProfileService';
-
-const profileService = new CreditProfileService();
+import type { Provider, IAgentRuntime, Memory, State, ProviderResult } from '@elizaos/core';
+import { logger } from '@elizaos/core';
+import type { CreditProfileService } from '../services/creditProfileService';
 
 export const creditContextProvider: Provider = {
   name: 'credit_context',
   description: 'Provides current credit profile, audit results, and pending dispute status as context for the agent',
 
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
-    const userId = message.userId;
-    const profile = profileService.getProfile(userId);
-
-    if (!profile) {
-      return 'No credit profile on file for this user. Use ANALYZE_CREDIT to start.';
+  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
+    const profileService = runtime.getService<CreditProfileService>('credit_profile');
+    if (!profileService) {
+      return { text: 'Credit profile service not available.' };
     }
 
-    const audit = profileService.getAudit(userId);
-    const pending = profileService.getPendingDisputes(userId);
-    const overdue = profileService.getOverdueDisputes(userId);
+    const userId = message.entityId as string;
+    const profile = await profileService.getProfile(userId);
+
+    if (!profile) {
+      return { text: 'No credit profile on file for this user. Use ANALYZE_CREDIT to start.' };
+    }
+
+    const audit = await profileService.runAudit(userId);
+    const pending = await profileService.getPendingDisputes(userId);
+    const overdue = await profileService.getOverdueDisputes(userId);
 
     let context = `[Credit Context]\n`;
     context += `Score: ${profile.current_score || 'unknown'}\n`;
@@ -33,7 +37,26 @@ export const creditContextProvider: Provider = {
     context += `Overdue disputes: ${overdue.length}\n`;
 
     if (overdue.length > 0) {
-      context += `\n⚠️ ${overdue.length} dispute(s) past 30-day deadline — recommend escalation to CFPB\n`;
+      context += `\n${overdue.length} dispute(s) past 30-day deadline — recommend escalation to CFPB\n`;
+    }
+
+    // Creditor address awareness (concurrent lookups)
+    const creditorNames = [...new Set((profile.negative_items || []).map(i => i.creditor_name).filter(Boolean))];
+    if (creditorNames.length > 0) {
+      const lookups = await Promise.all(
+        creditorNames.map(async (name) => ({
+          name,
+          hasAddress: !!(await profileService.getCreditorAddress(userId, name)),
+        }))
+      );
+      const withAddress = lookups.filter(l => l.hasAddress).map(l => l.name);
+      const needAddress = lookups.filter(l => !l.hasAddress).map(l => l.name);
+      if (withAddress.length > 0) {
+        context += `Creditor addresses on file: ${withAddress.join(', ')}\n`;
+      }
+      if (needAddress.length > 0) {
+        context += `Creditors needing address: ${needAddress.join(', ')}\n`;
+      }
     }
 
     if (audit) {
@@ -49,6 +72,6 @@ export const creditContextProvider: Provider = {
       context += `Trade lines: ${profile.business.existing_trade_lines || 0}\n`;
     }
 
-    return context;
+    return { text: context };
   },
 };

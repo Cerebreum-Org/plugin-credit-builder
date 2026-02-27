@@ -198,3 +198,25 @@ export const BUREAU_ADDRESSES = {
   experian: { name: 'Experian', address_line1: 'P.O. Box 4500', city: 'Allen', state: 'TX', zip: '75013' },
   transunion: { name: 'TransUnion LLC Consumer Dispute Center', address_line1: 'P.O. Box 2000', city: 'Chester', state: 'PA', zip: '19016' },
 } as const;
+
+// ---------------------------------------------------------------------------
+// Creditor / Collector Addresses
+// ---------------------------------------------------------------------------
+
+export interface CreditorAddress {
+  creditor_name: string;
+  entity_type: 'creditor' | 'collector';
+  name: string;           // as printed on letter
+  address_line1: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+export type LetterAddress = {
+  name: string;
+  address_line1: string;
+  city: string;
+  state: string;
+  zip: string;
+};

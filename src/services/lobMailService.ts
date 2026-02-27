@@ -3,8 +3,9 @@
  */
 
 import { logger } from '@elizaos/core';
-import type { CreditProfile, NegativeItem, LetterType, DisputeRecord } from '../types';
+import type { CreditProfile, NegativeItem, LetterType, DisputeRecord, LetterAddress } from '../types';
 import { LETTER_TYPE_INFO, BUREAU_ADDRESSES } from '../types';
+import { LETTER_TEMPLATES } from '../templates';
 
 export class LobMailService {
   private apiKey: string;
@@ -32,6 +33,10 @@ export class LobMailService {
         zip_code: address.zip,
       }),
     });
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`Lob address verification failed (${resp.status}): ${err}`);
+    }
     return resp.json();
   }
 
@@ -80,20 +85,36 @@ export class LobMailService {
     const resp = await fetch(`${this.baseUrl}/letters/${letterId}`, {
       headers: { 'Authorization': 'Basic ' + btoa(this.apiKey + ':') },
     });
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`Lob status check failed (${resp.status}): ${err}`);
+    }
     return resp.json();
   }
 
   async sendDispute(
     client: CreditProfile,
     letterType: LetterType,
-    target: 'equifax' | 'experian' | 'transunion',
+    target: 'equifax' | 'experian' | 'transunion' | LetterAddress,
     disputeItems: NegativeItem[],
     extraContext?: Record<string, string>
   ): Promise<DisputeRecord> {
     const info = LETTER_TYPE_INFO[letterType];
-    const bureau = BUREAU_ADDRESSES[target];
-    const html = this.generateLetterHtml(letterType, client, bureau, disputeItems, extraContext);
-    const description = `Credit Dispute #${info.id} - ${info.name} - ${target}`;
+
+    let to: LetterAddress;
+    let targetLabel: string;
+
+    if (typeof target === 'string') {
+      const bureau = BUREAU_ADDRESSES[target];
+      to = { name: bureau.name, address_line1: bureau.address_line1, city: bureau.city, state: bureau.state, zip: bureau.zip };
+      targetLabel = target;
+    } else {
+      to = target;
+      targetLabel = target.name;
+    }
+
+    const html = this.generateLetterHtml(letterType, client, to, disputeItems, extraContext);
+    const description = `Credit Dispute #${info.id} - ${info.name} - ${targetLabel}`;
 
     const from = {
       name: client.name,
@@ -103,15 +124,7 @@ export class LobMailService {
       zip: client.zip,
     };
 
-    const to = {
-      name: bureau.name,
-      address_line1: bureau.address_line1,
-      city: bureau.city,
-      state: bureau.state,
-      zip: bureau.zip,
-    };
-
-    logger.info(`[CreditBuilder] Sending ${info.name} to ${target} via certified mail...`);
+    logger.info(`[CreditBuilder] Sending ${info.name} to ${targetLabel} via certified mail...`);
     const result = await this.sendCertifiedLetter(from, to, html, description);
 
     const now = new Date();
@@ -119,8 +132,8 @@ export class LobMailService {
       id: crypto.randomUUID(),
       letter_type: letterType,
       letter_name: info.name,
-      target,
-      recipient_name: bureau.name,
+      target: targetLabel,
+      recipient_name: to.name,
       items_disputed: disputeItems,
       sent_date: now.toISOString(),
       response_deadline: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -156,44 +169,7 @@ export class LobMailService {
     items: NegativeItem[],
     ctx?: Record<string, string>
   ): string {
-    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const context = ctx || {};
-
-    const itemsBlock = items.map(item => `
-      <p style="margin-left:20px">
-        <strong>Account:</strong> ${item.creditor_name}<br>
-        <strong>Account #:</strong> XXXX-${item.account_number_last4 || 'XXXX'}<br>
-        <strong>Reason:</strong> ${item.dispute_reason || 'Information is inaccurate'}<br>
-        <strong>Type:</strong> ${item.type}
-      </p>
-    `).join('');
-
-    const header = `
-      <div style="font-family:'Times New Roman',serif;font-size:12pt;line-height:1.6;max-width:6.5in;margin:0 auto">
-        <p>${client.name}<br>${client.address_line1}<br>${client.city}, ${client.state} ${client.zip}<br>
-        SSN (last 4): XXX-XX-${client.ssn_last4 || 'XXXX'}<br>DOB: ${client.dob || '[DOB]'}</p>
-        <p>${today}</p>
-        <p>${recipient.name}<br>${recipient.address_line1}<br>${recipient.city}, ${recipient.state} ${recipient.zip}</p>
-    `;
-
-    // Simplified body generation — full templates in production
-    const info = LETTER_TYPE_INFO[letterType];
-    const body = `
-      <p><strong>RE: ${info.name}</strong></p>
-      <p>Dear Sir/Madam:</p>
-      <p>Pursuant to my rights under ${info.legal_basis}, I am writing regarding the following account(s):</p>
-      ${itemsBlock}
-      <p>I request that you investigate this matter and correct or delete the inaccurate information within 30 days as required by law.</p>
-      <p>Please provide written confirmation of the results of your investigation.</p>
-    `;
-
-    const footer = `
-        <p>Sincerely,</p><br><br>
-        <p>${client.name}</p>
-        <p style="font-size:10pt;color:#666;margin-top:30px"><em>SENT VIA USPS CERTIFIED MAIL — RETURN RECEIPT REQUESTED</em></p>
-      </div>
-    `;
-
-    return `<html><body>${header}${body}${footer}</body></html>`;
+    const templateFn = LETTER_TEMPLATES[letterType];
+    return templateFn({ letterType, client, recipient, items, extra: ctx });
   }
 }
