@@ -23,7 +23,7 @@ export const buildBusinessCreditAction: Action = {
     options: any,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const text = message.content.text.toLowerCase();
+    const text = (message.content.text || '').toLowerCase();
 
     // Determine what phase they're asking about
     let response = '';

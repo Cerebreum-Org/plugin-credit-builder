@@ -23,7 +23,7 @@ export const creditEducationAction: Action = {
     options: any,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const text = message.content.text.toLowerCase();
+    const text = (message.content.text || '').toLowerCase();
     let response = '';
 
     // FICO breakdown

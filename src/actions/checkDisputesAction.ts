@@ -3,9 +3,8 @@
  */
 
 import type { Action, ActionResult, IAgentRuntime, Memory, HandlerCallback, State } from '@elizaos/core';
-import { CreditProfileService } from '../services/creditProfileService';
-
-const profileService = new CreditProfileService();
+import { logger } from '@elizaos/core';
+import type { CreditProfileService } from '../services/creditProfileService';
 
 export const checkDisputesAction: Action = {
   name: 'CHECK_DISPUTES',
@@ -24,10 +23,16 @@ export const checkDisputesAction: Action = {
     options: any,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const userId = message.userId;
-    const pending = profileService.getPendingDisputes(userId);
-    const overdue = profileService.getOverdueDisputes(userId);
-    const all = profileService.getDisputes(userId);
+    const profileService = runtime.getService<CreditProfileService>('credit_profile');
+    if (!profileService) {
+      logger.error('[CreditBuilder] CreditProfileService not registered');
+      return { success: false, text: 'Credit profile service unavailable' };
+    }
+
+    const userId = message.entityId as string;
+    const pending = await profileService.getPendingDisputes(userId);
+    const overdue = await profileService.getOverdueDisputes(userId);
+    const all = await profileService.getDisputes(userId);
 
     if (all.length === 0) {
       if (callback) {
@@ -46,7 +51,7 @@ export const checkDisputesAction: Action = {
     response += `Overdue: ${overdue.length}\n\n`;
 
     if (overdue.length > 0) {
-      response += `**⚠️ OVERDUE — Ready for Escalation:**\n`;
+      response += `**OVERDUE — Ready for Escalation:**\n`;
       overdue.forEach(d => {
         const daysOver = Math.ceil((Date.now() - new Date(d.response_deadline).getTime()) / (1000 * 60 * 60 * 24));
         response += `- **${d.letter_name}** → ${d.target} | ${daysOver} days overdue\n`;

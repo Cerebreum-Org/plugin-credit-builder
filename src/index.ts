@@ -1,28 +1,29 @@
 /**
  * @elizaos/plugin-credit-builder
- * 
+ *
  * Autonomous credit building plugin for ElizaOS agents.
- * 
+ *
  * Features:
  * - Credit profile intake and FICO score analysis
  * - Automated credit audit with prioritized action plans
- * - 19 dispute letter types (FCRA/FDCPA/ECOA)
+ * - 19 dispute letter types (FCRA/FDCPA/ECOA) with full legal templates
  * - USPS Certified Mail dispatch via Lob API
  * - 30-day response deadline tracking with escalation
  * - Business credit building (DUNS, PAYDEX, vendor trade lines, SBA loans)
  * - Credit education (myths, rights, strategies)
  * - Contextual credit awareness via provider
- * 
+ * - Persistent storage via ElizaOS cache and memory systems
+ *
  * Environment Variables:
  * - LOB_API_KEY: Lob.com API key for sending certified mail (required for SEND_DISPUTE)
- * 
+ *
  * Actions:
  * - ANALYZE_CREDIT: Intake + audit + recommendations
  * - SEND_DISPUTE: Generate and send certified dispute letters
  * - CHECK_DISPUTES: Monitor pending/overdue disputes
  * - BUILD_BUSINESS_CREDIT: Business credit guidance
  * - CREDIT_EDUCATION: Answer any credit question
- * 
+ *
  * Legal Framework:
  * - Fair Credit Reporting Act (FCRA) — 15 U.S.C. § 1681 et seq.
  * - Fair Debt Collection Practices Act (FDCPA) — 15 U.S.C. § 1692 et seq.
@@ -39,6 +40,7 @@ import { checkDisputesAction } from './actions/checkDisputesAction';
 import { buildBusinessCreditAction } from './actions/buildBusinessCreditAction';
 import { creditEducationAction } from './actions/creditEducationAction';
 import { creditContextProvider } from './providers/creditContextProvider';
+import { CreditProfileService } from './services/creditProfileService';
 
 export const creditBuilderPlugin: Plugin = {
   name: 'credit-builder',
@@ -53,7 +55,7 @@ export const creditBuilderPlugin: Plugin = {
   providers: [
     creditContextProvider,
   ],
-  services: [],
+  services: [CreditProfileService],
 };
 
 export default creditBuilderPlugin;
@@ -67,4 +69,6 @@ export { creditEducationAction } from './actions/creditEducationAction';
 export { creditContextProvider } from './providers/creditContextProvider';
 export { CreditProfileService } from './services/creditProfileService';
 export { LobMailService } from './services/lobMailService';
+export { LETTER_TEMPLATES } from './templates';
+export type { LetterTemplateFunction, LetterContext } from './templates';
 export * from './types';

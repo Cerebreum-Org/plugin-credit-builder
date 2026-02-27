@@ -5,9 +5,7 @@
 
 import type { Action, ActionResult, IAgentRuntime, Memory, HandlerCallback, State } from '@elizaos/core';
 import { logger } from '@elizaos/core';
-import { CreditProfileService } from '../services/creditProfileService';
-
-const profileService = new CreditProfileService();
+import type { CreditProfileService } from '../services/creditProfileService';
 
 export const analyzeCreditAction: Action = {
   name: 'ANALYZE_CREDIT',
@@ -29,11 +27,17 @@ export const analyzeCreditAction: Action = {
     options: any,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const userId = message.userId;
-    const text = message.content.text.toLowerCase();
+    const profileService = runtime.getService<CreditProfileService>('credit_profile');
+    if (!profileService) {
+      logger.error('[CreditBuilder] CreditProfileService not registered');
+      return { success: false, text: 'Credit profile service unavailable' };
+    }
+
+    const userId = message.entityId as string;
+    const text = (message.content.text || '').toLowerCase();
 
     // Check if we already have a profile
-    let profile = profileService.getProfile(userId);
+    const profile = await profileService.getProfile(userId);
 
     if (!profile) {
       // Start intake process
@@ -64,7 +68,7 @@ Share what you know and I'll build your credit blueprint.`,
     }
 
     // Run audit on existing profile
-    const audit = profileService.runAudit(userId);
+    const audit = await profileService.runAudit(userId);
     if (!audit) {
       return { success: false, text: 'Could not run audit — profile data incomplete' };
     }
@@ -106,7 +110,7 @@ Share what you know and I'll build your credit blueprint.`,
       await callback({ text: response, actions: ['ANALYZE_CREDIT'], source: message.content.source });
     }
 
-    return { success: true, text: 'Credit audit complete', data: audit };
+    return { success: true, text: 'Credit audit complete', data: audit as unknown as Record<string, unknown> };
   },
 
   examples: [
