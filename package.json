@@ -1,0 +1,30 @@
+{
+  "name": "@elizaos/plugin-credit-builder",
+  "version": "1.0.0",
+  "description": "ElizaOS plugin for autonomous credit building — personal credit (FCRA), business credit (ECOA), dispute automation, certified mail via Lob API, and ML-powered score optimization",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "bun test"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "credit",
+    "fcra",
+    "ecoa",
+    "dispute",
+    "certified-mail",
+    "credit-building",
+    "business-credit"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "^1.0.0"
+  },
+  "license": "MIT"
+}
